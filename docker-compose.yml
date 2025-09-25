@@ -1,0 +1,16 @@
+version: '3.9'
+services:
+  microservice1:
+    image: microservice1:latest
+    ports:
+      - "8081:8080"
+
+  microservice2:
+    image: microservice2:latest
+    ports:
+      - "8082:8080"
+
+  microservice3:
+      image: microservice3:latest
+      ports:
+        - "8083:8080"

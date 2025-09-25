@@ -1,0 +1,50 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 
+                             http://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.example</groupId>
+    <artifactId>my-monorepo</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <!-- Spring Boot parent -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.3.4</version> <!-- latest stable -->
+        <relativePath/> <!-- lookup in Maven Central -->
+    </parent>
+
+    <modules>
+        <module>libs/Lib1</module>
+        <module>libs/Lib2</module>
+        <module>libs/Lib3</module>
+        <module>microservices/microservice1</module>
+        <module>microservices/microservice2</module>
+        <module>microservices/microservice3</module>
+    </modules>
+
+    <properties>
+        <java.version>17</java.version>
+        <!-- Default Sonar properties, can be overridden by CI variables -->
+        <sonar.projectKey>my-monorepo</sonar.projectKey>
+        <sonar.host.url>http://localhost:9000</sonar.host.url>
+    </properties>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.sonarsource.scanner.maven</groupId>
+                    <artifactId>sonar-maven-plugin</artifactId>
+                    <version>4.0.0.4121</version> <!-- Latest stable -->
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+
+
+</project>

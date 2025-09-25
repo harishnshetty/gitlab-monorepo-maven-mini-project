@@ -1,0 +1,183 @@
+stages:
+  - build
+  - test
+  - sonar
+  - security
+  - docker_build
+  - notify
+
+variables:
+  # MAVEN_CLI_OPTS: "-B -U"  # removed -s .m2/settings.xml
+  MAVEN_CLI_OPTS: "-s .m2/settings.xml -B -U"
+
+
+cache:
+  paths:
+    - .m2/repository
+
+before_script:
+  - echo "Running on $(hostname)"
+  - export JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java)))) || true
+  - java -version || true
+
+# ----------------------------------------
+# Stage 1: Build all JARs
+# ----------------------------------------
+build_all:
+  stage: build
+  tags:
+    - shell-runner
+  script:
+    - echo "Building all modules..."
+    - mvn $MAVEN_CLI_OPTS clean package -DskipTests
+  artifacts:
+    paths:
+      - microservices/*/target/
+      - libs/*/target/
+
+# ----------------------------------------
+# Stage 2: Run unit tests
+# ----------------------------------------
+unit_tests:
+  stage: test
+  tags:
+    - shell-runner
+  dependencies:
+    - build_all
+  script:
+    - echo "Running unit tests..."
+    - mvn $MAVEN_CLI_OPTS test
+
+# ----------------------------------------
+# Stage 3: SonarQube Analysis
+# ----------------------------------------
+sonar_scan:
+  stage: sonar
+  tags:
+    - shell-runner
+  dependencies:
+    - build_all
+  script:
+    - echo "Running SonarQube analysis for all modules..."
+    - mvn clean install -DskipTests   # install all modules
+    - |
+      for DIR in microservices/*; do
+        if [ -f "$DIR/pom.xml" ]; then
+          NAME=$(basename $DIR)
+          echo "Running SonarQube for $NAME"
+          mvn sonar:sonar \
+            -f $DIR/pom.xml \
+            -Dsonar.projectKey="${CI_PROJECT_NAME}-${NAME}" \
+            -Dsonar.projectName="$NAME" \
+            -Dsonar.host.url="$SONAR_HOST_URL" \
+            -Dsonar.login="$SONAR_TOKEN"
+        fi
+      done
+  allow_failure: true
+
+
+trivy_scan:
+  stage: security
+  tags:
+    - shell-runner
+  script:
+    - echo "Running Trivy FS scan..."
+    - trivy fs . --severity HIGH,CRITICAL --exit-code 0 --format table > trivy-report.txt
+    - trivy fs . --severity HIGH,CRITICAL --exit-code 0 --format json > trivy-report.json
+  artifacts:
+    paths:
+      - trivy-report.txt
+      - trivy-report.json
+
+
+
+
+# ----------------------------------------
+# Stage 4: Docker Build & Run
+# ----------------------------------------
+docker_build:
+  stage: docker_build
+  tags:
+    - shell-runner
+  dependencies:
+    - build_all
+  script:
+    - echo "Building Docker images for microservices..."
+    - |
+      # Login to Docker Hub
+      if [ -n "$DOCKER_USERNAME" ] && [ -n "$DOCKER_PASSWORD" ]; then
+        echo "Logging in to Docker Hub..."
+        echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+      else
+        echo "Docker credentials not set - will only build images locally"
+      fi
+      
+      PORT=8081
+      for DIR in microservices/*; do
+        if [ -f "$DIR/pom.xml" ]; then
+          NAME=$(basename "$DIR")
+          JAR=$(ls $DIR/target/*.jar 2>/dev/null | head -n1 || true)
+          if [ -n "$JAR" ]; then
+            echo "Building Docker image for $NAME"
+            
+            # Build with Docker Hub repository name
+            DOCKER_IMAGE="$DOCKER_USERNAME/$NAME:latest"
+            docker build -t $DOCKER_IMAGE -f $DIR/Dockerfile $DIR
+
+            # Push to Docker Hub if credentials are available
+            if [ -n "$DOCKER_USERNAME" ] && [ -n "$DOCKER_PASSWORD" ]; then
+              echo "Pushing $DOCKER_IMAGE to Docker Hub..."
+              docker push $DOCKER_IMAGE
+            fi
+
+            # Remove old container if exists
+            docker rm -f $NAME || true
+
+            # Run container mapping internal 8080 to host port
+            docker run -d --name $NAME -p $PORT:8080 $DOCKER_IMAGE
+            echo "$NAME running on host port $PORT"
+
+            PORT=$((PORT+1))
+          else
+            echo "Skipping $NAME (no jar found)"
+          fi
+        fi
+      done
+
+
+# ----------------------------------------
+# Stage 5: Email Notification
+# ----------------------------------------
+notify:
+  stage: notify
+  tags:
+    - shell-runner
+  script:
+    - |
+      echo "=== Pipeline Completion ==="
+      echo "Project: $CI_PROJECT_NAME"
+      echo "Status: $CI_PIPELINE_STATUS"
+      echo "Pipeline ID: $CI_PIPELINE_ID"
+      echo "View: $CI_PIPELINE_URL"
+      echo "=== All stages completed successfully ==="
+      
+      # Only send email if credentials are available
+      if [ -n "$EMAIL_USER" ] && [ -n "$EMAIL_PASS" ]; then
+        echo "Sending email notification..."
+        
+        # Set default status if empty
+        PIPELINE_STATUS="${CI_PIPELINE_STATUS:-success}"
+        
+        curl -s --max-time 30 \
+          --url smtps://smtp.gmail.com:465 \
+          --ssl-reqd \
+          --user "$EMAIL_USER:$EMAIL_PASS" \
+          --mail-from "$EMAIL_USER" \
+          --mail-rcpt "$EMAIL_USER" \
+          -T <(echo -e "Subject: Pipeline $PIPELINE_STATUS: $CI_PROJECT_NAME\n\nPipeline ID: $CI_PIPELINE_ID\nStatus: $PIPELINE_STATUS\nProject: $CI_PROJECT_NAME\nBranch: $CI_COMMIT_REF_NAME\nCommit: ${CI_COMMIT_SHA:0:8}\nURL: $CI_PIPELINE_URL\n\nAll stages completed successfully!") \
+          && echo "Email sent" || echo "Email failed"
+      else
+        echo "Email credentials not set - skipping email notification"
+      fi
+  only:
+    - main
