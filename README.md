@@ -5,8 +5,10 @@
 ## For more projects, check out  
 [https://harishnshetty.github.io/projects.html](https://harishnshetty.github.io/projects.html)
 
-[![Video Tutorial](https://github.com/harishnshetty/image-data-project/blob/697a14a6f3bca7222218317e87d705e3fbe04f31/monorepo-java.jpg)](https://youtu.be/M6BxKpSvWa4)
+[![Video Tutorial](https://github.com/harishnshetty/image-data-project/blob/697a14a6f3bca7222218317e87d705e3fbe04f31/monorepo-java.jpg)](https://youtu.be/Pd5_8oyD4ME)
 
+
+[![Video Tutorial](https://github.com/harishnshetty/image-data-project/blob/b56663771ad1870cfc34d85f31e0eccc12225869/stagemonorepo.png)](https://youtu.be/Pd5_8oyD4ME)
 
 
 ## Ports to Enable in Security Group
